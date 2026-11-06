@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laser-Brille</title>
+<style>
+html,body{margin:0;height:100%;background:#0b1330;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#fff}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+#ui{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 0;display:flex;justify-content:space-between;pointer-events:none;font-weight:700;font-size:18px;text-shadow:0 1px 4px #000}
+#hint{position:fixed;left:0;right:0;top:42%;text-align:center;font-size:20px;pointer-events:none;text-shadow:0 1px 6px #000;padding:0 16px}
+#btn{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:14px 24px;min-height:44px;font-size:18px;border:0;border-radius:12px;background:#c4161c;color:#fff;font-weight:700;cursor:pointer}
+#btn:focus-visible{outline:3px solid #fff}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Spielfeld: Blick in den Himmel mit Flugzeugen"></canvas>
+<div id="ui"><span id="score">Punkte: 0</span><span id="left">Flugzeuge: 0</span></div>
+<div id="hint">Du schaust in den Himmel. Setze die Brille auf!</div>
+<button id="btn" type="button">Brille aufsetzen (G)</button>
+<script>
+(function () {
+  var cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+  var glasses = false, score = 0, kills = 0;
+  var mx = 0, my = 0;
+  var planes = [], parts = [], clouds = [];
+  var scoreEl = document.getElementById('score'), leftEl = document.getElementById('left');
+  var hint = document.getElementById('hint'), btn = document.getElementById('btn');
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (!mx) { mx = W / 2; my = H * 0.35; }
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  for (var i = 0; i < 9; i++) clouds.push({ x: Math.random() * W, y: Math.random() * H * 0.7, s: 0.6 + Math.random() * 1.2, v: 0.1 + Math.random() * 0.25 });
+
+  function em(ch, x, y, size) {
+    ctx.font = Math.round(size) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(ch, x, y);
+  }
+
+  function spawn() {
+    var dir = Math.random() < 0.5 ? 1 : -1;
+    var s = 0.55 + Math.random() * 0.9;
+    planes.push({
+      x: dir === 1 ? -120 : W + 120,
+      y: H * 0.08 + Math.random() * H * 0.5,
+      dir: dir, s: s, v: (1.1 + Math.random() * 1.6) / (0.6 + s * 0.4),
+      hp: 45, flash: 0
+    });
+  }
+  function fillPlanes() { while (planes.length < 5) spawn(); }
+  fillPlanes();
+
+  function boom(p) {
+    if (parts.length > 30) parts.splice(0, parts.length - 30);
+    for (var i = 0; i < 7; i++) {
+      var a = Math.random() * 6.283, sp = 1 + Math.random() * 6;
+      parts.push({ x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 22 + Math.random() * 12, max: 34, r: 16 + Math.random() * 22 * p.s, e: Math.random() < 0.5 ? '🔥' : '✨', g: 0.08 });
+    }
+    parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 18, max: 18, r: 150 * p.s, e: '💥', g: 0, ring: true });
+    for (var j = 0; j < 2; j++) {
+      parts.push({ x: p.x + (Math.random() - 0.5) * 60 * p.s, y: p.y, vx: (Math.random() - 0.5) * 3, vy: -1 + Math.random() * 2, life: 35, max: 35, r: 30 * p.s, e: '💨', g: 0.05 });
+    }
+  }
+
+  function setPointer(e) {
+    var r = cv.getBoundingClientRect();
+    mx = e.clientX - r.left; my = e.clientY - r.top;
+  }
+  cv.addEventListener('pointermove', setPointer);
+  cv.addEventListener('pointerdown', setPointer);
+
+  function toggle() {
+    glasses = !glasses;
+    btn.textContent = glasses ? 'Brille abnehmen (G)' : 'Brille aufsetzen (G)';
+    hint.style.display = glasses ? 'none' : 'block';
+  }
+  btn.addEventListener('click', toggle);
+  window.addEventListener('keydown', function (e) { if (e.key === 'g' || e.key === 'G') toggle(); });
+
+  function drawSky() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0a2a72'); g.addColorStop(0.6, '#3f86d8'); g.addColorStop(1, '#a9d3ff');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    em('☀️', W * 0.85, H * 0.12, 70);
+    clouds.forEach(function (c) {
+      c.x += c.v; if (c.x > W + 150) c.x = -150;
+      em('☁️', c.x, c.y, 90 * c.s);
+    });
+    for (var x = 0; x <= W + 40; x += 44) em(x % 88 ? '🌳' : '🌲', x, H - 10 - ((x * 7) % 23), 50);
+  }
+
+  function drawPlane(p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.dir, 1);
+    ctx.rotate(Math.PI / 4);
+    if (p.flash > 0) ctx.globalAlpha = 0.6;
+    em('✈️', 0, 0, 90 * p.s);
+    if (p.hp < 25) em('🔥', -10, 6, 40 * p.s);
+    ctx.restore();
+  }
+
+  function drawGlasses() {
+    var size = Math.min(W * 0.55, 280);
+    var cy = H - size * 0.4 - 10;
+    var cxs = [W / 2 - size * 0.2, W / 2 + size * 0.2];
+    var t = performance.now() / 1000;
+    var hot = false;
+    planes.forEach(function (p) {
+      var dx = (mx - p.x) / (78 * p.s), dy = (my - p.y) / (34 * p.s);
+      if (dx * dx + dy * dy < 1) { hot = true; p.hp -= 1; p.flash = 3; if (p.hp < 25 && Math.random() < 0.08) parts.push({ x: p.x, y: p.y, vx: -p.dir * 0.5, vy: -0.3, life: 22, max: 22, r: 28 * p.s, e: '💨', g: -0.01 }); }
+    });
+    ctx.save();
+    ctx.lineCap = 'round';
+    cxs.forEach(function (cx) {
+      ctx.shadowColor = '#ff1a1a'; ctx.shadowBlur = hot ? 10 : 6;
+      ctx.strokeStyle = 'rgba(255,30,30,0.55)'; ctx.lineWidth = hot ? 12 : 8;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(mx, my); ctx.stroke();
+      ctx.strokeStyle = '#ffd0d0'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(mx, my); ctx.stroke();
+    });
+    ctx.shadowBlur = 0;
+    em('🕶️', W / 2, cy, size);
+    cxs.forEach(function (cx) { em('🔴', cx, cy, 16 + 4 * Math.sin(t * 8)); });
+    ctx.restore();
+    em(hot ? '🎯' : '⭕', mx, my, 36);
+  }
+
+  function step() {
+    drawSky();
+    for (var i = planes.length - 1; i >= 0; i--) {
+      var p = planes[i];
+      p.x += p.v * p.dir; if (p.flash > 0) p.flash--;
+      if (p.hp <= 0) {
+        boom(p); planes.splice(i, 1); score += 100; kills++;
+        setTimeout(function () { spawn(); }, 900);
+        continue;
+      }
+      if ((p.dir === 1 && p.x > W + 140) || (p.dir === -1 && p.x < -140)) { planes.splice(i, 1); spawn(); continue; }
+      drawPlane(p);
+    }
+    if (glasses) drawGlasses();
+    for (var j = parts.length - 1; j >= 0; j--) {
+      var q = parts[j];
+      q.x += q.vx; q.y += q.vy; q.vy += q.g; q.life--;
+      if (q.life <= 0) { parts.splice(j, 1); continue; }
+      ctx.globalAlpha = q.life / q.max;
+      ctx.fillStyle = q.c;
+      em(q.e, q.x, q.y, q.ring ? q.r * (0.4 + 0.6 * (1 - q.life / q.max)) : q.r);
+    }
+    ctx.globalAlpha = 1;
+    scoreEl.textContent = 'Punkte: ' + score;
+    leftEl.textContent = 'Abgeschossen: ' + kills;
+    requestAnimationFrame(step);
+  }
+  step();
+})();
+</script>
+</body>
+</html>
